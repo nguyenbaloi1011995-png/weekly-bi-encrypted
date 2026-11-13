@@ -23,7 +23,30 @@
     const {role,key} = await ready;
     return new Response(await decrypt(role,key,name));
   };
-  document.addEventListener("DOMContentLoaded", () => {
+  const sessionName = "weekly-bi-encrypted-session-v1";
+  document.addEventListener("DOMContentLoaded", async () => {
+    function activate(role, key) {
+      const exit = document.createElement("button");
+      exit.type = "button";
+      exit.textContent = "退出登录";
+      exit.addEventListener("click", () => {
+        sessionStorage.removeItem(sessionName);
+        location.reload();
+      });
+      document.querySelector("nav")?.append(exit);
+      unlock({role,key});
+    }
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(sessionName));
+      if (saved && Object.hasOwn(roleLabels,saved.role)) {
+        const key = await crypto.subtle.importKey("jwk",saved.key,"AES-GCM",false,["decrypt"]);
+        await decrypt(saved.role,key,"check");
+        activate(saved.role,key);
+        return;
+      }
+    } catch {
+      sessionStorage.removeItem(sessionName);
+    }
     const dialog=document.createElement("dialog");
     dialog.innerHTML='<form><h1>看板登录</h1><label>访问范围<select name="role"></select></label><label>密码<input name="password" type="password" required autocomplete="current-password"></label><button>登录</button><p role="status"></p></form>';
     const form=dialog.querySelector("form");
@@ -41,11 +64,17 @@
       try {
         const material=await crypto.subtle.importKey("raw",encoder.encode(form.elements.password.value),"PBKDF2",false,["deriveKey"]);
         const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:await bytes(role,"salt"),iterations:600000,hash:"SHA-256"},
-          material,{name:"AES-GCM",length:256},false,["decrypt"]);
+          material,{name:"AES-GCM",length:256},true,["decrypt"]);
         await decrypt(role,key,"check");
         form.reset();
         dialog.remove();
-        unlock({role,key});
+        try {
+          const saved = {role,key:await crypto.subtle.exportKey("jwk",key)};
+          sessionStorage.setItem(sessionName,JSON.stringify(saved));
+        } catch {
+          // The current page remains usable when browser storage is disabled.
+        }
+        activate(role,key);
       } catch {
         status.textContent="密码有误，或加密数据暂时无法读取。";
       } finally {button.disabled=false;}
