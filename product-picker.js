@@ -1,4 +1,4 @@
-const salesKey = (date, group, region, asin) => JSON.stringify([date, group, region, asin === "-" ? "" : asin]);
+const salesKey = (date, group, region, asin, owner = "未分配") => JSON.stringify([date, group, region, asin === "-" ? "" : asin, owner]);
 
 function bindProductPicker(key, caption, selected, options) {
   const search = document.querySelector("#" + key + "-search");

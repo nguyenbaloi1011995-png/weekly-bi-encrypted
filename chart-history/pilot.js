@@ -186,6 +186,7 @@ const grid = document.querySelector("#charts");
 const dimensions = [...document.querySelectorAll(".dimension")];
 const selectedAsins = new Set();
 const selectedParents = new Set();
+const selectedOwners = new Set();
 
 const cache = new Map();
 let generation = 0;
@@ -210,7 +211,7 @@ const summaryPercent = new Intl.NumberFormat("zh-CN", {style: "percent", minimum
 
 async function summarizeSales(start, end, filters, matchingKeys, request) {
   const totals = {};
-  const [groups, regions, , , asins] = filters.map(values => new Set(values));
+  const [groups, regions, , , asins, , owners] = filters.map(values => new Set(values));
   for (const month of salesIndex.months) {
     if ((start && month.last < start) || (end && month.first > end)) continue;
     if (!salesCache.has(month.file)) {
@@ -225,8 +226,8 @@ async function summarizeSales(start, end, filters, matchingKeys, request) {
     for (const row of rows) {
       if ((start && row.date < start) || (end && row.date > end)) continue;
       if (groups.size && !groups.has(row.group) || regions.size && !regions.has(row.region) ||
-          asins.size && !asins.has(row.product)) continue;
-      if (matchingKeys && !matchingKeys.has(salesKey(row.date, row.group, row.region, row.product))) continue;
+          asins.size && !asins.has(row.product) || owners.size && !owners.has(row.owner ?? "未分配")) continue;
+      if (matchingKeys && !matchingKeys.has(salesKey(row.date, row.group, row.region, row.product, row.owner))) continue;
       for (const name of ["sales", "units", "grossProfit", "adSpend"]) {
         if (Number.isFinite(row[name])) totals[name] = (totals[name] ?? 0) + row[name];
       }
@@ -262,7 +263,7 @@ async function render() {
   const type = grain.value;
   const [start, end] = [from.value, to.value];
   const selections = dimensions.map(field => [...field.querySelectorAll("input:checked")].map(box => box.value));
-  const filters = [...selections, [...selectedAsins], [...selectedParents]];
+  const filters = [...selections, [...selectedAsins], [...selectedParents], [...selectedOwners]];
   const request = ++generation;
   summary.hidden = true;
   status.textContent = "正在读取所选日期的数据…";
@@ -272,8 +273,8 @@ async function render() {
     const rollup = createBasisRollup(basis.fields, type, start, end, filters);
     const total = createBasisRollup(basis.fields, "total", start, end, filters);
     const matchingKeys = filters[2].length || filters[3].length || filters[5].length ? new Set() : null;
-    const captureKey = matchingKeys ? ([date, group, region, , , asin]) =>
-      matchingKeys.add(salesKey(date, group, region, asin)) : undefined;
+    const captureKey = matchingKeys ? ([date, group, region, , , asin, , owner]) =>
+      matchingKeys.add(salesKey(date, group, region, asin, owner)) : undefined;
     for (const [i, file] of files.entries()) {
       status.textContent = `正在读取数据 ${i + 1} / ${files.length}…`;
       if (!cache.has(file.file)) {
@@ -346,6 +347,7 @@ async function initialize() {
 
   const resetAsins = bindProductPicker("asin", " ASIN", selectedAsins, optionsFor(5));
   const resetParents = bindProductPicker("parent", "父单", selectedParents, optionsFor(6));
+  const resetOwners = bindProductPicker("owner", "负责人", selectedOwners, [...new Set([...(salesIndex.dimensions.owner ?? []), ...(optionsFor(7) ?? [])])].sort());
   document.querySelector("#apply").addEventListener("click", render);
   grain.addEventListener("change", render);
   function reset() {
@@ -355,6 +357,7 @@ async function initialize() {
     dimensions.forEach(field => field.querySelectorAll("input").forEach(box => { box.checked = false; }));
     resetAsins();
     resetParents();
+    resetOwners();
     render();
   }
   document.querySelector("#reset").addEventListener("click", reset);

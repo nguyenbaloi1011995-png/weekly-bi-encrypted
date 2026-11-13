@@ -97,11 +97,13 @@ async function initialize() {
 
   const selectedAsins = new Set();
   const selectedParents = new Set();
+  const selectedOwners = new Set();
   const asins = [...new Set([...sales.dimensions.product, ...stock.options[4]])]
     .filter(value => value && value !== "-").sort();
   const resetAsins = bindProductPicker("asin", " ASIN", selectedAsins, asins);
   const resetParents = bindProductPicker("parent", "父单", selectedParents, stock.options[5]);
 
+  const resetOwners = bindProductPicker("owner", "负责人", selectedOwners, [...new Set([...(sales.dimensions.owner ?? []), ...(stock.options[6] ?? [])])].sort());
   const grain = monthly ? "month" : "week";
   const fieldIndexes = new Map(stock.fields.map((name, i) => [name, i]));
   const cache = new Map();
@@ -120,13 +122,14 @@ async function initialize() {
     const to = end.value || last;
     const [groups, regions] = choices.map(boxes => new Set(boxes.filter(box => box.checked).map(box => box.value)));
     const asins = new Set(selectedAsins);
+    const owners = new Set(selectedOwners);
     const parents = [...selectedParents];
     const parentKeys = parents.length ? new Set() : null;
-    const restrictedExtra = regions.size || asins.size || parents.length;
+    const restrictedExtra = regions.size || asins.size || parents.length || owners.size;
     const inRange = day => day >= from && day <= to;
     const overlaps = file => from <= to && file.last >= from && file.first <= to;
     const matches = (g, r, a) => (!groups.size || groups.has(g)) && (!regions.size || regions.has(r)) && (!asins.size || asins.has(a));
-    const selectors = [[...groups], [...regions], [], [], [...asins], parents];
+    const selectors = [[...groups], [...regions], [], [], [...asins], parents, [...owners]];
     const salesRoll = aggregateRows();
     const extraRoll = aggregateRows();
     const stockRoll = createBasisRollup(stock.fields, grain, from, to, selectors);
@@ -149,8 +152,8 @@ async function initialize() {
 
     reportProgress();
     try {
-      const captureParent = parentKeys ? ([date, group, region, , , asin]) =>
-        parentKeys.add(salesKey(date, group, region, asin)) : undefined;
+      const captureParent = parentKeys ? ([date, group, region, , , asin, , owner]) =>
+        parentKeys.add(salesKey(date, group, region, asin, owner)) : undefined;
       const stockRead = loadFiles(stockFiles, "./chart-history/data/", true, rows => {
         stockRoll.add(rows, captureParent);
         stockTotal.add(rows);
@@ -161,7 +164,8 @@ async function initialize() {
         await loadFiles(salesFiles, "./data/", false, rows => {
           for (const row of rows) {
             if (!inRange(row.date) || !matches(row.group, row.region, row.product)) continue;
-            if (parentKeys && !parentKeys.has(salesKey(row.date, row.group, row.region, row.product))) continue;
+            if (owners.size && !owners.has(row.owner ?? "未分配")) continue;
+            if (parentKeys && !parentKeys.has(salesKey(row.date, row.group, row.region, row.product, row.owner))) continue;
             salesRoll.add(row.date, [row.sales, row.units, row.orders, row.grossProfit, row.adSpend]);
           }
         });
@@ -246,6 +250,7 @@ async function initialize() {
     choices.flat().forEach(box => { box.checked = false; });
     resetAsins();
     resetParents();
+    resetOwners();
     return render();
   }
   [start, end].forEach(control => control.addEventListener("change", render));

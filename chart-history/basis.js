@@ -17,7 +17,8 @@ function createBasisRollup(fields, grain, start, end, filters) {
     for (const row of rows) {
       const day = row[0];
       if ((start && day < start) || (end && day > end)) continue;
-      if (allowed.some((selection, i) => selection.size && !selection.has(row[i + 1]))) continue;
+      const offset = row.length === fields.length + 8 ? 8 : 7;
+      if (allowed.some((selection, i) => selection.size && !selection.has(i === 6 && offset === 7 ? "未分配" : row[i + 1]))) continue;
       onMatch?.(row);
       let label = grain === "total" ? "total" : grain === "month" ? day.slice(0, 7) : day;
       if (grain === "week") {
@@ -36,12 +37,12 @@ function createBasisRollup(fields, grain, start, end, filters) {
       if (day < group.start) group.start = day;
       if (day > group.end) group.end = day;
       for (let i = 0; i < fields.length; i++) {
-        const value = row[i + 7];
+        const value = row[i + offset];
         if (value != null) group.sums[i] = (group.sums[i] ?? 0) + value;
       }
-      days.forEach((i, j) => { if (row[i + 7]) group.days[j].add(day); });
-      if (row[tIndex + 7] != null) {
-        group.tStock = (group.tStock ?? 0) + row[tIndex + 7] * (row[fbaIndex + 7] ?? 0);
+      days.forEach((i, j) => { if (row[i + offset]) group.days[j].add(day); });
+      if (row[tIndex + offset] != null) {
+        group.tStock = (group.tStock ?? 0) + row[tIndex + offset] * (row[fbaIndex + offset] ?? 0);
       }
     }
   }
