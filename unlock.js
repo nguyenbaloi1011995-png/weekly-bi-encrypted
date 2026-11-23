@@ -21,7 +21,11 @@
     const name = url.href.startsWith(scriptRoot.href) ? url.pathname.slice(scriptRoot.pathname.length) : "";
     if (!/^(data|chart-history\/data|monthly-metrics)\//.test(name)) return originalFetch(input,options);
     const {role,key} = await ready;
-    return new Response(await decrypt(role,key,name));
+    const plain = new Uint8Array(await decrypt(role,key,name));
+    if (/^data\//.test(name) && plain[0] === 31 && plain[1] === 139) {
+      return new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip")));
+    }
+    return new Response(plain);
   };
   const sessionName = "weekly-bi-encrypted-session-v1";
   document.addEventListener("DOMContentLoaded", async () => {
